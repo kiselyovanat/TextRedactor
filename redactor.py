@@ -125,18 +125,18 @@ class Receiver(object):
         self.command_stack.append(self.insert_command)
 
     def undo(self):
-        command = self.command_stack.pop()
-        self.redo_stack.append(command)
-        if command:
+        if self.command_stack:
+            command = self.command_stack.pop()
+            self.redo_stack.append(command)
             self.undo_command.execute(command)
 
         else:
             print "Nothing to undo"
 
     def redo(self):
-        command = self.redo_stack.pop()
-        self.command_stack.append(command)
-        if command:
+        if  self.redo_stack:
+            command = self.redo_stack.pop()
+            self.command_stack.append(command)
             self.redo_command.execute(command)
         else:
             print "Nothing to redo"
@@ -157,11 +157,53 @@ class Receiver(object):
         self.paste_command.execute()
 
 
+class CommandParser(object):
+
+    def __init__(self,command_doc):
+        self.command_doc = command_doc
+        self.commands = []
+
+    def parse(self):
+        self.commands = self.getTokens()
+        '''for i in range(0, len(tokens)):
+            if tokens[i][0] == "insert":
+                self.commands.append([tokens[i][0],tokens[i][1], int(tokens[i][2]) )
+            elif tokens[i][0] == 'delete':
+                self.commands.append('delete' + '(' + tokens[i][1] + ',' + tokens[i][2] + ')')
+            elif tokens[i][0] == 'undo':
+                self.commands.append('undo()')
+            elif tokens[i][0] == 'redo':
+                self.commands.append('redo()')
+            elif tokens[i][0] == 'copy':
+                self.commands.append('copy' + '(' + tokens[i][1] + ',' + tokens[i][2] + ')')
+            elif tokens[i][0] == 'paste':
+                self.commands.append('paste' + '(' + tokens[i][1] + ')')'''
+        return self.commands
+
+    def getTokens(self):
+        strings = self.command_doc.text.split('\n')
+        tokens = [command.split(' ') for command in strings]
+        return tokens
+
+
 doc = Document('natasha')
 doc.show()
 receiver = Receiver(InsertCommand(doc), DeleteCommand(doc), UndoCommand(), RedoCommand(), CopyCommand(doc), PasteCommand(doc))
+f = open("commands.txt", 'r')
+text = f.read()
+command_doc = Document(text)
+command_doc.show()
+parser = CommandParser(command_doc)
+commands = parser.parse()
+print commands
+for i in range(0,len(commands)):
+    action_name = commands[i][0]
+    action = getattr(receiver, action_name)()
+    doc.show()
+
+
+'''receiver = Receiver(InsertCommand(doc), DeleteCommand(doc), UndoCommand(), RedoCommand(), CopyCommand(doc), PasteCommand(doc))
 receiver.insert('love',3)
-#receiver.insert('love',3)
 doc.show()
 receiver.undo()
 doc.show()
@@ -173,12 +215,8 @@ receiver.undo()
 doc.show()
 receiver.redo()
 doc.show()
-receiver.copy(0,4)
-print 'buffer ', doc.buffer
-receiver.paste(0)
-doc.show()
 receiver.undo()
-doc.show()
+doc.show()'''
 
 '''    Реализовать примитивный текстовый редактор, способный производить ряд операций над одной строкой, с использование шаблона проектирования “Команда”
     Тесктовый редактор работает с двумя текстовыми файлами. В первом находится строка, над которой он проводит все операции. Во втором - последовательность команд, которые нужно выполнить. Необходимо реализовать поддержку следующих команд:
