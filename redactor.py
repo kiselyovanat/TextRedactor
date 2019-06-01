@@ -68,7 +68,6 @@ class DeleteCommand(Command):
         self.doc.text = self.doc.text[:self.startPosition] + self.doc.text[self.endPosition:]
 
     def unexecute(self):
-        #print 'print ',self.doc.text
         self.doc.text = self.doc.text[:self.startPosition] + self.deletedText + self.doc.text[self.startPosition:]
 
 class CopyCommand(Command):
@@ -105,9 +104,28 @@ class PasteCommand(Command):
         index = self.position + len(self.doc.buffer)
         self.doc.text =  self.doc.text[:self.position] + self.doc.text[index:]
 
-
-
 class Receiver(object):
+    def __init__(self, doc, command_doc):
+        self.doc = doc
+        self.command_doc = command_doc
+
+    def work(self):
+        parser = CommandParser(self.command_doc)
+        commands = parser.parse()
+        #print commands
+        invoker = Invoker(InsertCommand(self.doc), DeleteCommand(self.doc), UndoCommand(), RedoCommand(), CopyCommand(self.doc), PasteCommand(self.doc))
+        for i in range(0,len(commands)):                    # у каждой команды своё число аргументов.
+            action_name = commands[i][0]                    # синтаксис getattr - getattr(объект класса, метод класса)(аргументы метода)
+            command_lenght = len(commands[i])               # getattr(invoker, 'copy')(1,3) = invoker.copy(1,3)
+            if command_lenght == 3:
+                action = getattr(invoker, action_name)(commands[i][1], commands[i][2])
+            elif command_lenght == 2:
+                action = getattr(invoker, action_name)(commands[i][1])
+            elif command_lenght == 1:
+                action = getattr(invoker, action_name)()
+            self.doc.show()
+
+class Invoker(object):
     def __init__(self, insert, delete, undo, redo, copy, paste):
         self.insert_command = insert
         self.undo_command = undo
@@ -165,19 +183,17 @@ class CommandParser(object):
 
     def parse(self):
         self.commands = self.getTokens()
-        '''for i in range(0, len(tokens)):
-            if tokens[i][0] == "insert":
-                self.commands.append([tokens[i][0],tokens[i][1], int(tokens[i][2]) )
-            elif tokens[i][0] == 'delete':
-                self.commands.append('delete' + '(' + tokens[i][1] + ',' + tokens[i][2] + ')')
-            elif tokens[i][0] == 'undo':
-                self.commands.append('undo()')
-            elif tokens[i][0] == 'redo':
-                self.commands.append('redo()')
-            elif tokens[i][0] == 'copy':
-                self.commands.append('copy' + '(' + tokens[i][1] + ',' + tokens[i][2] + ')')
-            elif tokens[i][0] == 'paste':
-                self.commands.append('paste' + '(' + tokens[i][1] + ')')'''
+        for i in range(0, len(self.commands)):              # у каждой команды разные типы входных переменных.
+            if self.commands[i][0] == "insert":             # после getTokens() все аргументы типа sting.
+                self.commands[i][2] = int(self.commands[i][2])
+            elif self.commands[i][0] == 'delete':
+                self.commands[i][1] = int(self.commands[i][1])
+                self.commands[i][2] = int(self.commands[i][2])
+            elif self.commands[i][0] == 'copy':
+                self.commands[i][1] = int(self.commands[i][1])
+                self.commands[i][2] = int(self.commands[i][2])
+            elif self.commands[i][0] == 'paste':
+                self.commands[i][1] = int(self.commands[i][1])
         return self.commands
 
     def getTokens(self):
@@ -185,62 +201,17 @@ class CommandParser(object):
         tokens = [command.split(' ') for command in strings]
         return tokens
 
+def start(commands_filename):
+    doc = Document('abra cadabra')
 
-doc = Document('natasha')
-doc.show()
-receiver = Receiver(InsertCommand(doc), DeleteCommand(doc), UndoCommand(), RedoCommand(), CopyCommand(doc), PasteCommand(doc))
-f = open("commands.txt", 'r')
-text = f.read()
-command_doc = Document(text)
-command_doc.show()
-parser = CommandParser(command_doc)
-commands = parser.parse()
-print commands
-for i in range(0,len(commands)):
-    action_name = commands[i][0]
-    action = getattr(receiver, action_name)()
-    doc.show()
+    f = open(commands_filename, 'r')
+    text = f.read()
+    f.close()
+    text = text[:len(text)-1]
+    command_doc = Document(text)
+    #command_doc.show()
 
+    receiver = Receiver(doc, command_doc)
+    receiver.work()
 
-'''receiver = Receiver(InsertCommand(doc), DeleteCommand(doc), UndoCommand(), RedoCommand(), CopyCommand(doc), PasteCommand(doc))
-receiver.insert('love',3)
-doc.show()
-receiver.undo()
-doc.show()
-receiver.redo()
-doc.show()
-receiver.delete(0,4)
-doc.show()
-receiver.undo()
-doc.show()
-receiver.redo()
-doc.show()
-receiver.undo()
-doc.show()'''
-
-'''    Реализовать примитивный текстовый редактор, способный производить ряд операций над одной строкой, с использование шаблона проектирования “Команда”
-    Тесктовый редактор работает с двумя текстовыми файлами. В первом находится строка, над которой он проводит все операции. Во втором - последовательность команд, которые нужно выполнить. Необходимо реализовать поддержку следующих команд:
-    • copy idx1 idx2 - скопировать в буффер обмена символы с позиции idx1 до позиции idx2
-    • paste idx - вставить содержимое буффера обмена в позицию idx
-    • insert “string” idx - вставить строку “string” в позицию idx
-    • delete idx1 idx2 - удалить все символы с позиции idx1 до позиции idx2
-    • undo - отменить предыдущую команду
-    • redo - выполнить отмененную команду заново
-    Пример тесктового файла комманд:
-    copy 1, 3
-    insert "hello", 1
-    paste 6
-    undo
-    redo
-    delete 2, 7
-    undo
-    undo
-    redo
-    redo
-    Необходимо:
-    • Реализовать систему классов, необходимую для патерна “Команда”: общий интерфейс комманд + классы для каждой из комманд
-    • Реализовать класс текстового процессора, хранящий строку и способный выполнять все необходимые операции над ней
-    • Реализовать класс-парсер, считывающий последовательность комманд из файла и интерпретирующий их
-    • Реализовать класс, выполняющий последовательность комманд (полученных от парсера) и реализующий механизм undo/redo
-
-'''
+start("commands.txt")
