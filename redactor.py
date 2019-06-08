@@ -4,13 +4,27 @@ from abc import ABCMeta, abstractmethod
 
 class Document(object):
 
-    def __init__(self,text):
-        self.size = len(text)
-        self.text = text
+    def __init__(self,filename):
+        self.text = self.get_from_file(filename)
+        self.size = len(self.text)
         self.buffer = None
 
     def show(self):
         print self.text
+
+    def get_from_file(self,filename):
+        file = open(filename, 'r')
+        text = file.read()
+        text = text[:len(text)-1]       #символ конца файла убираем
+        strings = text.split('\n')
+        file.close()
+        return strings
+
+    def write_to_file(self):
+        file = open("redactorWork.txt",'w+')
+        for string in self.text:
+            file.write(string + '\n')
+        file.close()
 
 class Command(object):
 
@@ -20,22 +34,34 @@ class Command(object):
     def unexecute(self):
         pass
 
+    def check_position(self, stringNumber, startPosition, endPosition=None):
+        if stringNumber > self.doc.size-1:                  #т.к нумерация строк начинается с 0
+            raise Exception("Wrong string number")
+        if startPosition > len(self.doc.text[stringNumber]):
+            raise Exception("Wrong position")
+        if endPosition != None and endPosition > len(self.doc.text[stringNumber]):
+            raise Exception("Wrong position")
+
+
 class InsertCommand(Command):
     def __init__(self, doc):
         self.doc = doc
         self.text = None
         self.position = None
+        self.stringNumber = None
 
-    def InsertCommand(self, text, position):
+    def InsertCommand(self, text, stringNumber, position):
+        self.check_position(stringNumber,position)
         self.text = text
         self.position = position
+        self.stringNumber = stringNumber
 
     def execute(self):
-        self.doc.text = self.doc.text[:self.position] + self.text + self.doc.text[self.position:]
+        self.doc.text[self.stringNumber] = self.doc.text[self.stringNumber][:self.position] + self.text + self.doc.text[self.stringNumber][self.position:]
 
     def unexecute(self):
         index = self.position + len(self.text)
-        self.doc.text = self.doc.text[:self.position] + self.doc.text[index:]
+        self.doc.text[self.stringNumber] = self.doc.text[self.stringNumber][:self.position] + self.doc.text[self.stringNumber][index:]
 
 class UndoCommand(Command):
     def __init__(self):
@@ -58,30 +84,37 @@ class DeleteCommand(Command):
         self.doc = doc
         self.startPosition = None
         self.endPosition = None
+        self.stringNumber = None
 
-    def DeleteCommand(self,startPosition, endPosition):
+    def DeleteCommand(self,stringNumber, startPosition, endPosition):
+        self.check_position(stringNumber, startPosition, endPosition)
+        self.stringNumber = stringNumber
         self.startPosition = startPosition
         self.endPosition = endPosition
-        self.deletedText = self.doc.text[self.startPosition:self.endPosition]
+        self.deletedText = self.doc.text[self.stringNumber][self.startPosition:self.endPosition]
+
 
     def execute(self):
-        self.doc.text = self.doc.text[:self.startPosition] + self.doc.text[self.endPosition:]
+        self.doc.text[self.stringNumber] = self.doc.text[self.stringNumber][:self.startPosition] + self.doc.text[self.stringNumber][self.endPosition:]
 
     def unexecute(self):
-        self.doc.text = self.doc.text[:self.startPosition] + self.deletedText + self.doc.text[self.startPosition:]
+        self.doc.text[self.stringNumber] = self.doc.text[self.stringNumber][:self.startPosition] + self.deletedText + self.doc.text[self.stringNumber][self.startPosition:]
 
 class CopyCommand(Command):
     def __init__(self,doc):
         self.doc = doc
         self.startPosition = None
         self.endPosition = None
+        self.stringNumber = None
 
-    def CopyCommand(self,startPosition, endPosition):
+    def CopyCommand(self,stringNumber, startPosition, endPosition):
+        self.check_position(stringNumber,startPosition, endPosition)
+        self.stringNumber = stringNumber
         self.startPosition = startPosition
         self.endPosition = endPosition
 
     def execute(self):
-        self.doc.buffer = self.doc.text[self.startPosition:self.endPosition]
+        self.doc.buffer = self.doc.text[self.stringNumber][self.startPosition:self.endPosition]
 
     #def unexecute(self):
     #    self.doc.buffer = None
@@ -90,19 +123,22 @@ class PasteCommand(Command):
     def __init__(self,doc):
         self.doc = doc
         self.position = None
+        self.stringNumber = None
 
-    def PasteCommand(self,position):
+    def PasteCommand(self,stringNumber,position):
+        self.check_position(stringNumber, position)
+        self.stringNumber = stringNumber
         self.position = position
 
     def execute(self):
         if self.doc.buffer:
-            self.doc.text = self.doc.text[:self.position] + self.doc.buffer + self.doc.text[self.position:]
+            self.doc.text[self.stringNumber] = self.doc.text[self.stringNumber][:self.position] + self.doc.buffer + self.doc.text[self.stringNumber][self.position:]
         else:
             print 'Nothing to paste'
 
     def unexecute(self):
         index = self.position + len(self.doc.buffer)
-        self.doc.text =  self.doc.text[:self.position] + self.doc.text[index:]
+        self.doc.text[self.stringNumber] =  self.doc.text[self.stringNumber][:self.position] + self.doc.text[self.stringNumber][index:]
 
 class Receiver(object):
     def __init__(self, doc, command_doc):
@@ -114,16 +150,21 @@ class Receiver(object):
         commands = parser.parse()
         #print commands
         invoker = Invoker(InsertCommand(self.doc), DeleteCommand(self.doc), UndoCommand(), RedoCommand(), CopyCommand(self.doc), PasteCommand(self.doc))
-        for i in range(0,len(commands)):                    # у каждой команды своё число аргументов.
-            action_name = commands[i][0]                    # синтаксис getattr - getattr(объект класса, метод класса)(аргументы метода)
-            command_lenght = len(commands[i])               # getattr(invoker, 'copy')(1,3) = invoker.copy(1,3)
-            if command_lenght == 3:
-                action = getattr(invoker, action_name)(commands[i][1], commands[i][2])
-            elif command_lenght == 2:
-                action = getattr(invoker, action_name)(commands[i][1])
-            elif command_lenght == 1:
-                action = getattr(invoker, action_name)()
-            self.doc.show()
+        try:
+            for i in range(0,len(commands)):                    # у каждой команды своё число аргументов.
+                action_name = commands[i][0]                    # синтаксис getattr - getattr(объект класса, метод класса)(аргументы метода)
+                command_lenght = len(commands[i])               # getattr(invoker, 'copy')(1,3) = invoker.copy(1,3)
+                if command_lenght == 4:                         #insert, copy,delete
+                    action = getattr(invoker, action_name)(commands[i][1], commands[i][2], commands[i][3])
+                elif command_lenght == 3:                       #paste
+                    action = getattr(invoker, action_name)(commands[i][1],commands[i][2])
+                elif command_lenght == 1:                       #redo,undo
+                    action = getattr(invoker, action_name)()
+                #self.doc.show()
+        except Exception as e:
+            print str(e)+ ' in ' + commands[i][0] + ' command'
+            return
+
 
 class Invoker(object):
     def __init__(self, insert, delete, undo, redo, copy, paste):
@@ -137,8 +178,8 @@ class Invoker(object):
         self.command_stack = []
         self.redo_stack = []
 
-    def insert(self,text,position):
-        self.insert_command.InsertCommand(text,position)
+    def insert(self, text, stringNumber, position):
+        self.insert_command.InsertCommand(text, stringNumber, position)
         self.insert_command.execute()
         self.command_stack.append(self.insert_command)
 
@@ -159,18 +200,18 @@ class Invoker(object):
         else:
             print "Nothing to redo"
 
-    def delete(self,startPosition, endPosition):
-        self.delete_command.DeleteCommand(startPosition, endPosition)
+    def delete(self, stringNumber, startPosition, endPosition):
+        self.delete_command.DeleteCommand(stringNumber, startPosition, endPosition)
         self.delete_command.execute()
         self.command_stack.append(self.delete_command)
 
-    def copy(self, startPosition, endPosition):
-        self.copy_command.CopyCommand(startPosition, endPosition)
+    def copy(self, stringNumber, startPosition, endPosition):
+        self.copy_command.CopyCommand(stringNumber, startPosition, endPosition)
         self.command_stack.append(self.copy_command)
         self.copy_command.execute()
 
-    def paste(self, position):
-        self.paste_command.PasteCommand(position)
+    def paste(self, stringNumber, position):
+        self.paste_command.PasteCommand(stringNumber, position)
         self.command_stack.append(self.paste_command)
         self.paste_command.execute()
 
@@ -186,32 +227,33 @@ class CommandParser(object):
         for i in range(0, len(self.commands)):              # у каждой команды разные типы входных переменных.
             if self.commands[i][0] == "insert":             # после getTokens() все аргументы типа sting.
                 self.commands[i][2] = int(self.commands[i][2])
+                self.commands[i][3] = int(self.commands[i][3])
             elif self.commands[i][0] == 'delete':
                 self.commands[i][1] = int(self.commands[i][1])
                 self.commands[i][2] = int(self.commands[i][2])
+                self.commands[i][3] = int(self.commands[i][3])
             elif self.commands[i][0] == 'copy':
                 self.commands[i][1] = int(self.commands[i][1])
                 self.commands[i][2] = int(self.commands[i][2])
+                self.commands[i][3] = int(self.commands[i][3])
             elif self.commands[i][0] == 'paste':
                 self.commands[i][1] = int(self.commands[i][1])
+                self.commands[i][2] = int(self.commands[i][2])
         return self.commands
 
     def getTokens(self):
-        strings = self.command_doc.text.split('\n')
+        strings = self.command_doc.text
         tokens = [command.split(' ') for command in strings]
         return tokens
 
-def start(commands_filename):
-    doc = Document('abra cadabra')
-
-    f = open(commands_filename, 'r')
-    text = f.read()
-    f.close()
-    text = text[:len(text)-1]
-    command_doc = Document(text)
+def start(text_filename,commands_filename):
+    doc = Document(text_filename)
+    #doc.show()
+    command_doc = Document(commands_filename)
     #command_doc.show()
 
     receiver = Receiver(doc, command_doc)
     receiver.work()
+    doc.write_to_file()
 
-start("commands.txt")
+start("text.txt","commands.txt")
